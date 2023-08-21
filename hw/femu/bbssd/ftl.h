@@ -115,6 +115,7 @@ struct ssdparams {
     int pls_per_lun;  /* # of planes per LUN (Die) */
     int luns_per_ch;  /* # of LUNs per channel */
     int nchs;         /* # of channels in the SSD */
+    int nwps;         /* # of write pointers in the SSD */
 
     int pg_rd_lat;    /* NAND page read latency in nanoseconds */
     int pg_wr_lat;    /* NAND page program latency in nanoseconds */
@@ -158,6 +159,7 @@ struct ssdparams {
 
 typedef struct line {
     int id;  /* line id, the same as corresponding block id */
+    int sid; /* stream id */
     int ipc; /* invalid page count in this line */
     int vpc; /* valid page count in this line */
     QTAILQ_ENTRY(line) entry; /* in either {free,victim,full} list */
@@ -200,7 +202,7 @@ struct ssd {
     struct ssd_channel *ch;
     struct ppa *maptbl; /* page level mapping table */
     uint64_t *rmap;     /* reverse mapptbl, assume it's stored in OOB */
-    struct write_pointer wp;
+    struct write_pointer *wp;
     struct line_mgmt lm;
 
     /* lockless ring for communication with NVMe IO thread */

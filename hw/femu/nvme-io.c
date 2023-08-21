@@ -251,6 +251,8 @@ uint16_t nvme_rw(FemuCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd, NvmeRequest *req)
     uint64_t elba = slba + nlb;
     uint16_t err;
     int ret;
+    printf("slba = %lu, nlb = %u, data_shift = %u, data_offset = %lu, data_size = %lu\n",
+                    slba, nlb, data_shift, data_offset, data_size);
 
     req->is_write = (rw->opcode == NVME_CMD_WRITE) ? 1 : 0;
 
