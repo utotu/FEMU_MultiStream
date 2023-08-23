@@ -1,4 +1,5 @@
 #include "ftl.h"
+#include "multi-stream/stream.h"
 
 //#define FEMU_DEBUG_FTL
 
@@ -245,7 +246,7 @@ static void ssd_init_params(struct ssdparams *spp)
     spp->pls_per_lun = 1;
     spp->luns_per_ch = 8;
     spp->nchs = 8;
-    spp->nwps = 1;
+    spp->nwps = 4;
 
     spp->pg_rd_lat = NAND_READ_LATENCY;
     spp->pg_wr_lat = NAND_PROG_LATENCY;
@@ -821,6 +822,12 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
     uint64_t curlat = 0, maxlat = 0;
     int r;
 
+    uint64_t sid;
+    double compress_ratio;
+    FemuCtrl *n = req->sq->ctrl;
+    void *mb = n->mbe->logical_space;
+
+
     if (end_lpn >= spp->tt_pgs) {
         ftl_err("start_lpn=%"PRIu64",tt_pgs=%d\n", start_lpn, ssd->sp.tt_pgs);
     }
@@ -833,6 +840,8 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
     }
 
     for (lpn = start_lpn; lpn <= end_lpn; lpn++) {
+        compress_ratio = calc_compress_ratio(mb, lpn);
+        sid = get_stream_id(compress_ratio, lpn);
         ppa = get_maptbl_ent(ssd, lpn);
         if (mapped_ppa(&ppa)) {
             /* update old page information first */
@@ -841,7 +850,7 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
         }
 
         /* new write */
-        ppa = get_new_page(ssd, 0);
+        ppa = get_new_page(ssd, sid);
         /* update maptbl */
         set_maptbl_ent(ssd, lpn, &ppa);
         /* update rmap */
@@ -850,7 +859,7 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
         mark_page_valid(ssd, &ppa);
 
         /* need to advance the write pointer here */
-        ssd_advance_write_pointer(ssd, 0);
+        ssd_advance_write_pointer(ssd, sid);
 
         struct nand_cmd swr;
         swr.type = USER_IO;
