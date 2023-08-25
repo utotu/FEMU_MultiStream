@@ -3,6 +3,7 @@
 
 //#define FEMU_DEBUG_FTL
 
+uint64_t TotalNumberOfPages;
 static void *ftl_thread(void *arg);
 
 static inline bool should_gc(struct ssd *ssd)
@@ -264,6 +265,7 @@ static void ssd_init_params(struct ssdparams *spp)
     spp->pgs_per_lun = spp->pgs_per_pl * spp->pls_per_lun;
     spp->pgs_per_ch = spp->pgs_per_lun * spp->luns_per_ch;
     spp->tt_pgs = spp->pgs_per_ch * spp->nchs;
+    TotalNumberOfPages = spp->tt_pgs;
 
     spp->blks_per_lun = spp->blks_per_pl * spp->pls_per_lun;
     spp->blks_per_ch = spp->blks_per_lun * spp->luns_per_ch;
@@ -822,7 +824,7 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
     uint64_t curlat = 0, maxlat = 0;
     int r;
 
-    uint64_t sid;
+    uint32_t sid;
     double compress_ratio;
     FemuCtrl *n = req->sq->ctrl;
     void *mb = n->mbe->logical_space;
