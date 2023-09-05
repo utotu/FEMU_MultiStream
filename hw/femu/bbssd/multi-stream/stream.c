@@ -17,7 +17,6 @@ uint32_t get_stream_id(double compress_ratio, uint64_t lpn)
 {
     if (KmeansIsInitialized == 0) {
         KmeansNormalizer n = {8, TotalNumberOfPages};
-        printf("TotalNumberOfPages = %lu\n", TotalNumberOfPages);
         KmeansInit(n);
 
         KmeansIsInitialized = 1;

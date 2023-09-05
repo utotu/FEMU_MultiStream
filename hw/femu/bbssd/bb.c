@@ -70,6 +70,17 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
     }
 }
 
+static void bb_stats(FemuCtrl *n, NvmeCmd *cmd)
+{
+    struct ssd *ssd = n->ssd;
+    femu_log("total_ssd_writes = %lu, total_user_writes = %lu\n",
+                ssd->stats.total_ssd_writes, ssd->stats.total_user_writes);
+
+    struct line_mgmt *lm = &ssd->lm;
+    femu_log("tt_lines = %d, free_line_cnt = %d, full_line_cnt = %d, victim_line_cnt = %d\n",
+            lm->tt_lines, lm->free_line_cnt, lm->full_line_cnt, lm->victim_line_cnt);
+}
+
 static uint16_t bb_nvme_rw(FemuCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
                            NvmeRequest *req)
 {
@@ -93,6 +104,9 @@ static uint16_t bb_admin_cmd(FemuCtrl *n, NvmeCmd *cmd)
     switch (cmd->opcode) {
     case NVME_ADM_CMD_FEMU_FLIP:
         bb_flip(n, cmd);
+        return NVME_SUCCESS;
+    case NVME_ADM_CMD_FEMU_STATS:
+        bb_stats(n, cmd);
         return NVME_SUCCESS;
     default:
         return NVME_INVALID_OPCODE | NVME_DNR;

@@ -196,6 +196,11 @@ struct nand_cmd {
     int64_t stime; /* Coperd: request arrival time */
 };
 
+struct statistics {
+    uint64_t total_user_writes; /* # of pages written by user */
+    uint64_t total_ssd_writes; /* # of pages written by SSD internal */
+};
+
 struct ssd {
     char *ssdname;
     struct ssdparams sp;
@@ -210,6 +215,8 @@ struct ssd {
     struct rte_ring **to_poller;
     bool *dataplane_started_ptr;
     QemuThread ftl_thread;
+
+    struct statistics stats;
 };
 
 void ssd_init(FemuCtrl *n);
