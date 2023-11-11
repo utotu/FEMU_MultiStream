@@ -6,6 +6,7 @@
 #include "qemu/units.h"
 #include "qemu/cutils.h"
 #include "qemu/memalign.h"
+#include "qemu/log.h"
 #include "hw/pci/msix.h"
 #include "hw/pci/msi.h"
 #include "hw/virtio/vhost.h"
@@ -322,6 +323,8 @@ enum NvmeAdminCommands {
     NVME_ADM_CMD_ASYNC_EV_REQ   = 0x0c,
     NVME_ADM_CMD_ACTIVATE_FW    = 0x10,
     NVME_ADM_CMD_DOWNLOAD_FW    = 0x11,
+    NVME_ADM_CMD_DIRECTIVE_SEND = 0x19,
+    NVME_ADM_CMD_DIRECTIVE_RECV = 0x1a,
     NVME_ADM_CMD_FORMAT_NVM     = 0x80,
     NVME_ADM_CMD_SECURITY_SEND  = 0x81,
     NVME_ADM_CMD_SECURITY_RECV  = 0x82,
@@ -431,6 +434,24 @@ typedef struct NvmeRwCmd {
     uint16_t    apptag;
     uint16_t    appmask;
 } NvmeRwCmd;
+
+typedef struct NvmeDirCmd {
+    uint8_t     opcode;
+    uint8_t     flags;
+    uint16_t    cid;
+    uint32_t    nsid;
+    uint64_t    rsvd2[2];
+    uint64_t    prp1;
+    uint64_t    prp2;
+    uint32_t    numd;
+    uint8_t     doper;
+    uint8_t     dtype;
+    uint16_t    dspec;
+    uint8_t     endir;
+    uint8_t     tdtype;
+    uint16_t    rsvd15;
+    uint32_t    rsvd16[3];
+} NvmeDirCmd;
 
 enum {
     NVME_RW_LR                  = 1 << 15,
@@ -624,6 +645,19 @@ typedef struct NvmeSmartLog {
     uint64_t    number_of_error_log_entries[2];
     uint8_t     reserved2[320];
 } NvmeSmartLog;
+
+typedef struct StreamsDirParams {
+    uint16_t    msl;
+    uint16_t    nssa;
+    uint16_t    nsso;
+    uint8_t     rsvd[10];
+    uint32_t    sws;
+    uint16_t    sgs;
+    uint16_t    nsa;
+    uint16_t    nso;
+    uint8_t     rsvd2[6];
+} StreamsDirParams;
+
 
 enum NvmeSmartWarn {
     NVME_SMART_SPARE                  = 1 << 0,
@@ -994,6 +1028,10 @@ typedef struct NvmeRequest {
 
     /* position in the priority queue for delay emulation */
     size_t                  pos;
+
+    /* discard range */
+    NvmeDsmRange *range;
+    uint16_t     range_nr;
 } NvmeRequest;
 
 typedef struct DMAOff {

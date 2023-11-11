@@ -495,6 +495,8 @@ const QEMULogItem qemu_log_items[] = {
       "log every user-mode syscall, its input, and its result" },
     { LOG_PER_THREAD, "tid",
       "open a separate log file per thread; filename must contain '%d'" },
+    { LOG_FEMU, "femu",
+      "log FEMU internal information" },
     { 0, NULL, NULL },
 };
 

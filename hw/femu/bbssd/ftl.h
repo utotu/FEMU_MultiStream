@@ -199,6 +199,7 @@ struct nand_cmd {
 struct statistics {
     uint64_t total_user_writes; /* # of pages written by user */
     uint64_t total_ssd_writes; /* # of pages written by SSD internal */
+    uint64_t stream_cnt[4];
 };
 
 struct ssd {

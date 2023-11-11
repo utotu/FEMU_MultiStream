@@ -1026,6 +1026,25 @@ static uint16_t nvme_format(FemuCtrl *n, NvmeCmd *cmd)
     return nvme_format_namespace(ns, lba_idx, meta_loc, pil, pi, sec_erase);
 }
 
+static uint16_t nvme_directive_send(FemuCtrl *n, NvmeCmd *cmd)
+{
+    // TODO
+    return NVME_SUCCESS;
+}
+
+static uint16_t nvme_directive_recv(FemuCtrl *n, NvmeCmd *cmd)
+{
+    StreamsDirParams s;
+
+    memset(&s, 0, sizeof(s));
+    s.nssa = le16_to_cpu(8); // NVM Subsystem Streams Available
+    uint64_t prp1 = le64_to_cpu(cmd->dptr.prp1);
+    uint64_t prp2 = le64_to_cpu(cmd->dptr.prp2);
+
+    return dma_read_prp(n, ((uint8_t *)&s), sizeof(s), prp1, prp2);
+}
+
+
 static uint16_t nvme_admin_cmd(FemuCtrl *n, NvmeCmd *cmd, NvmeCqe *cqe)
 {
     switch (cmd->opcode) {
@@ -1082,6 +1101,11 @@ static uint16_t nvme_admin_cmd(FemuCtrl *n, NvmeCmd *cmd, NvmeCqe *cqe)
     case NVME_ADM_CMD_SECURITY_SEND:
     case NVME_ADM_CMD_SECURITY_RECV:
         return NVME_INVALID_OPCODE | NVME_DNR;
+    case NVME_ADM_CMD_DIRECTIVE_SEND:
+        // TODO
+        return nvme_directive_send(n, cmd);
+    case NVME_ADM_CMD_DIRECTIVE_RECV:
+        return nvme_directive_recv(n, cmd);
     default:
         if (n->ext_ops.admin_cmd) {
             return n->ext_ops.admin_cmd(n, cmd);

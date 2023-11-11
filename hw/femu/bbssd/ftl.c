@@ -200,6 +200,7 @@ static void ssd_advance_write_pointer(struct ssd *ssd, uint32_t sid)
                 wpp->curline = get_next_free_line(ssd);
                 if (!wpp->curline) {
                     /* TODO */
+                    printf("abort\n");
                     abort();
                 }
                 wpp->curline->sid = sid;
@@ -375,8 +376,7 @@ static void ssd_init_rmap(struct ssd *ssd)
 static void ssd_init_stats(struct ssd *ssd)
 {
     struct statistics *stats = &ssd->stats;
-    stats->total_user_writes = 0;
-    stats->total_ssd_writes = 0;
+    memset(stats, 0, sizeof(*stats));
 }
 
 
@@ -842,7 +842,7 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
     uint64_t curlat = 0, maxlat = 0;
     int r;
 
-    uint32_t sid;
+    uint32_t sid = 0;
     double compress_ratio;
     FemuCtrl *n = req->sq->ctrl;
     void *mb = n->mbe->logical_space;
@@ -859,9 +859,21 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
             break;
     }
 
+
+    NvmeRwCmd *rw = (NvmeRwCmd*)&req->cmd;
+#define NVME_RW_DTYPE_STREAMS   (1 << 4)
+    if (rw->control & NVME_RW_DTYPE_STREAMS)
+        sid = (rw->dsmgmt >> 16);
+
     for (lpn = start_lpn; lpn <= end_lpn; lpn++) {
+        /* assign streamID */
         compress_ratio = calc_compress_ratio(mb, lpn);
-        sid = get_stream_id(compress_ratio, lpn);
+        compress_ratio += 1; // make compiler happy
+        //sid = get_stream_id(compress_ratio, lpn);
+
+        /* user-defined statistics */
+        ssd->stats.total_user_writes++;
+        ssd->stats.stream_cnt[sid]++;
 
         ppa = get_maptbl_ent(ssd, lpn);
         if (mapped_ppa(&ppa)) {
@@ -889,12 +901,43 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
         /* get latency statistics */
         curlat = ssd_advance_status(ssd, &ppa, &swr);
         maxlat = (curlat > maxlat) ? curlat : maxlat;
-
-        ssd->stats.total_user_writes++;
     }
 
     return maxlat;
 }
+
+static uint64_t ssd_discard(struct ssd *ssd, NvmeRequest *req)
+{
+    struct ssdparams *spp = &ssd->sp;
+    uint16_t nr = req->range_nr;
+    NvmeDsmRange *range = req->range;
+    int i;
+    uint64_t lba;
+    uint32_t len;
+    uint64_t start_lpn;
+    uint64_t end_lpn;
+    uint64_t lpn;
+    struct ppa ppa;
+
+    for (i = 0; i < nr; i++) {
+        lba = le64_to_cpu(range[i].slba);
+        len = le32_to_cpu(range[i].nlb);
+
+        start_lpn = lba / spp->secs_per_pg;
+        end_lpn = (lba + len - 1) / spp->secs_per_pg;
+        for (lpn = start_lpn; lpn <= end_lpn; lpn++) {
+            ppa = get_maptbl_ent(ssd, lpn);
+            if (mapped_ppa(&ppa)) {
+                mark_page_invalid(ssd, &ppa);
+                set_rmap_ent(ssd, INVALID_LPN, &ppa);
+            }
+        }
+    }
+
+    g_free(req->range);
+    return 0;
+}
+
 
 static void *ftl_thread(void *arg)
 {
@@ -932,7 +975,7 @@ static void *ftl_thread(void *arg)
                 lat = ssd_read(ssd, req);
                 break;
             case NVME_CMD_DSM:
-                lat = 0;
+                lat = ssd_discard(ssd, req);
                 break;
             default:
                 //ftl_err("FTL received unkown request type, ERROR\n");
