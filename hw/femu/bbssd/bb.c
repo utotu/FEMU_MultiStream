@@ -80,8 +80,20 @@ static void bb_stats(FemuCtrl *n, NvmeCmd *cmd)
     femu_log("tt_lines = %d, free_line_cnt = %d, full_line_cnt = %d, victim_line_cnt = %d\n",
         lm->tt_lines, lm->free_line_cnt, lm->full_line_cnt, lm->victim_line_cnt);
 
-    femu_log("stream0_cnt = %lu, stream1_cnt = %lu, stream2_cnt = %lu, stream3_cnt = %lu\n",
-        ssd->stats.stream_cnt[0], ssd->stats.stream_cnt[1], ssd->stats.stream_cnt[2], ssd->stats.stream_cnt[3]);
+
+    char tmp[128];
+    char str[MAX_NUM_STREAMS * 128];
+    for (int i = 0; i < MAX_NUM_STREAMS; i++) {
+        uint64_t gc_cnt = ssd->stats.streams[i].gc_cnt;
+
+        sprintf(tmp, "streams[%d]: cnt = %lu, gc_cnt = %lu, copyback_ratio = %f \n",
+            i,
+            ssd->stats.streams[i].cnt,
+            gc_cnt,
+            gc_cnt ? ssd->stats.streams[i].copyback_ratio_sum / gc_cnt : 0.0);
+        strcat(str, tmp);
+    }
+    femu_log("%s", str);
 }
 
 static uint16_t bb_nvme_rw(FemuCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,

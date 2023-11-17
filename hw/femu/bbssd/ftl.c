@@ -254,7 +254,7 @@ static void ssd_init_params(struct ssdparams *spp)
     spp->pls_per_lun = 1;
     spp->luns_per_ch = 8;
     spp->nchs = 8;
-    spp->nwps = 4;
+    spp->nwps = MAX_NUM_STREAMS;
 
     spp->pg_rd_lat = NAND_READ_LATENCY;
     spp->pg_wr_lat = NAND_PROG_LATENCY;
@@ -761,6 +761,11 @@ static int do_gc(struct ssd *ssd, bool force)
         return -1;
     }
 
+    uint32_t sid = victim_line->sid;
+    ssd->stats.streams[sid].gc_cnt++;
+    ssd->stats.streams[sid].copyback_ratio_sum +=
+        1.0 * victim_line->vpc / spp->pgs_per_line;
+
     ppa.g.blk = victim_line->id;
     ftl_debug("GC-ing line:%d,ipc=%d,victim=%d,full=%d,free=%d\n", ppa.g.blk,
               victim_line->ipc, ssd->lm.victim_line_cnt, ssd->lm.full_line_cnt,
@@ -873,7 +878,7 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
 
         /* user-defined statistics */
         ssd->stats.total_user_writes++;
-        ssd->stats.stream_cnt[sid]++;
+        ssd->stats.streams[sid].cnt++;
 
         ppa = get_maptbl_ent(ssd, lpn);
         if (mapped_ppa(&ppa)) {
@@ -930,6 +935,8 @@ static uint64_t ssd_discard(struct ssd *ssd, NvmeRequest *req)
             if (mapped_ppa(&ppa)) {
                 mark_page_invalid(ssd, &ppa);
                 set_rmap_ent(ssd, INVALID_LPN, &ppa);
+                ppa.ppa = UNMAPPED_PPA;
+                set_maptbl_ent(ssd, lpn, &ppa);
             }
         }
     }
@@ -975,7 +982,10 @@ static void *ftl_thread(void *arg)
                 lat = ssd_read(ssd, req);
                 break;
             case NVME_CMD_DSM:
-                lat = ssd_discard(ssd, req);
+                lat = 0;
+                uint32_t dw11 =le32_to_cpu(req->cmd.cdw11);
+                if (dw11 & NVME_DSMGMT_AD)
+                    ssd_discard(ssd, req);
                 break;
             default:
                 //ftl_err("FTL received unkown request type, ERROR\n");

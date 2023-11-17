@@ -196,10 +196,16 @@ struct nand_cmd {
     int64_t stime; /* Coperd: request arrival time */
 };
 
+#define MAX_NUM_STREAMS 8
+
 struct statistics {
     uint64_t total_user_writes; /* # of pages written by user */
     uint64_t total_ssd_writes; /* # of pages written by SSD internal */
-    uint64_t stream_cnt[4];
+    struct {
+        uint64_t cnt;
+        uint64_t gc_cnt;
+        double copyback_ratio_sum;
+    } streams[MAX_NUM_STREAMS];
 };
 
 struct ssd {
