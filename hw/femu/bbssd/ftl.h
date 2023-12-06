@@ -44,6 +44,11 @@ enum {
     FEMU_DISABLE_LOG = 7,
 };
 
+enum {
+    MULTISTREAM_MANUAL = 1,
+    MULTISTREAM_ENTROPY = 2,
+};
+
 
 #define BLK_BITS    (16)
 #define PG_BITS     (16)
@@ -155,6 +160,9 @@ struct ssdparams {
     int tt_pls;       /* total # of planes in the SSD */
 
     int tt_luns;      /* total # of LUNs in the SSD */
+
+    int stream_remap_thres;
+    int multistream_strategy;
 };
 
 typedef struct line {
@@ -196,16 +204,18 @@ struct nand_cmd {
     int64_t stime; /* Coperd: request arrival time */
 };
 
-#define MAX_NUM_STREAMS 8
+struct stream_stats {
+    uint64_t user_writes;
+    uint64_t gc_writes;
+    uint64_t gc_cnt;
+    double copyback_ratio_sum;
+};
 
-struct statistics {
-    uint64_t total_user_writes; /* # of pages written by user */
-    uint64_t total_ssd_writes; /* # of pages written by SSD internal */
-    struct {
-        uint64_t cnt;
-        uint64_t gc_cnt;
-        double copyback_ratio_sum;
-    } streams[MAX_NUM_STREAMS];
+struct ssd_stats {
+    uint64_t total_user_writes; /* total # of pages written by user */
+    uint64_t total_ssd_writes;  /* total # of pages written by SSD internal */
+    uint64_t total_gc_writes;   /* total # of pags write by GC */
+    struct stream_stats *streams;
 };
 
 struct ssd {
@@ -223,7 +233,8 @@ struct ssd {
     bool *dataplane_started_ptr;
     QemuThread ftl_thread;
 
-    struct statistics stats;
+    struct ssd_stats stats;
+    uint32_t *pg_copyback_tbl;
 };
 
 void ssd_init(FemuCtrl *n);

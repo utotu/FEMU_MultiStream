@@ -7,6 +7,9 @@ IMGDIR=$HOME/images
 # Virtual machine disk image
 OSIMGF=$IMGDIR/u20s.qcow2
 
+# Configrable SSD Controller layout parameters (must be power of 2)
+
+
 if [[ ! -e "$OSIMGF" ]]; then
 	echo ""
 	echo "VM disk image couldn't be found ..."

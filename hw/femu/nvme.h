@@ -1186,6 +1186,28 @@ typedef struct NvmeParams {
 #define FEMU_MAX_NUM_CHNLS (32)
 #define FEMU_MAX_NUM_CHIPS (128)
 
+typedef struct BbCtrlParams {
+    int secsz;
+    int secs_per_pg;
+    int pgs_per_blk;
+    int blks_per_pl;
+    int pls_per_lun;
+    int luns_per_ch;
+    int nchs;
+
+    int pg_rd_lat;
+    int pg_wr_lat;
+    int blk_er_lat;
+    int ch_xfer_lat;
+
+    int gc_thres_pcent;
+    int gc_thres_pcent_high;
+
+    int nstreams;
+    int stream_remap_thres;
+    int multistream_strategy;
+} BbCtrlParams;
+
 typedef struct ZNSCtrlParams {
     uint8_t  zns_num_ch;
     uint8_t  zns_num_lun;
@@ -1356,6 +1378,8 @@ typedef struct FemuCtrl {
     int64_t lpg_wr_lat_ns;
     int64_t blk_er_lat_ns;
     int64_t chnl_pg_xfer_lat_ns;
+
+    BbCtrlParams bb_params;
 
     struct ssd      *ssd;
     SsdDramBackend  *mbe;

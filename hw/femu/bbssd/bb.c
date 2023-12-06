@@ -73,27 +73,40 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
 static void bb_stats(FemuCtrl *n, NvmeCmd *cmd)
 {
     struct ssd *ssd = n->ssd;
-    femu_log("total_ssd_writes = %lu, total_user_writes = %lu\n",
-        ssd->stats.total_ssd_writes, ssd->stats.total_user_writes);
+    struct ssdparams *spp = &ssd->sp;
+
+    femu_log("total_ssd_writes = %lu, total_user_writes = %lu, total_gc_writes = %lu\n",
+        ssd->stats.total_ssd_writes, ssd->stats.total_user_writes, ssd->stats.total_gc_writes);
 
     struct line_mgmt *lm = &ssd->lm;
     femu_log("tt_lines = %d, free_line_cnt = %d, full_line_cnt = %d, victim_line_cnt = %d\n",
         lm->tt_lines, lm->free_line_cnt, lm->full_line_cnt, lm->victim_line_cnt);
 
 
-    char tmp[128];
-    char str[MAX_NUM_STREAMS * 128];
-    for (int i = 0; i < MAX_NUM_STREAMS; i++) {
+    char line[128];
+    char *str = g_malloc0(spp->nwps * sizeof(line));
+    str[0] = '\0';
+
+    for (int i = 0; i < spp->nwps; i++) {
         uint64_t gc_cnt = ssd->stats.streams[i].gc_cnt;
 
-        sprintf(tmp, "streams[%d]: cnt = %lu, gc_cnt = %lu, copyback_ratio = %f \n",
+        sprintf(line, "streams[%d]: user_writes= %lu, gc_writes = %lu, gc_cnt = %lu, copyback_ratio = %f\n", \
             i,
-            ssd->stats.streams[i].cnt,
+            ssd->stats.streams[i].user_writes,
+            ssd->stats.streams[i].gc_writes,
             gc_cnt,
             gc_cnt ? ssd->stats.streams[i].copyback_ratio_sum / gc_cnt : 0.0);
-        strcat(str, tmp);
+        strcat(str, line);
     }
-    femu_log("%s", str);
+    femu_log("streams statistics:\n%s", str);
+
+    /*
+    for (int i = 0; i < spp->tt_pgs; i++) {
+        femu_log("%d\n", ssd->pg_copyback_tbl[i]);
+    }
+    */
+
+    free(str);
 }
 
 static uint16_t bb_nvme_rw(FemuCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
