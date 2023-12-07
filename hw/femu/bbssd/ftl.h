@@ -47,6 +47,7 @@ enum {
 enum {
     MULTISTREAM_MANUAL = 1,
     MULTISTREAM_ENTROPY = 2,
+    MULTISTREAM_RANDOM = 3,
 };
 
 

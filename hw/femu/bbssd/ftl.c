@@ -388,6 +388,22 @@ static void ssd_init_stats(struct ssd *ssd)
     memset(ssd->pg_copyback_tbl, 0, sizeof(uint32_t) * spp->tt_pgs);
 }
 
+static void ssd_init_multistream(struct ssd *ssd)
+{
+    struct ssdparams *spp = &ssd->sp;
+
+    /* random seed for generating sid */
+    srand(time(NULL));
+
+    /* initialize write pointer, this is how we allocate new pages for writes */
+    ssd->wp = g_malloc0(sizeof(struct write_pointer) * spp->nwps);
+    for (int i = 0; i < spp->nwps; i++) {
+        ssd_init_write_pointer(ssd, i);
+    }
+
+    /* initialize K-means mapper */
+    multistream_mapper_init(spp->nwps);
+}
 
 void ssd_init(FemuCtrl *n)
 {
@@ -416,11 +432,7 @@ void ssd_init(FemuCtrl *n)
     /* initialize all the lines */
     ssd_init_lines(ssd);
 
-    /* initialize write pointer, this is how we allocate new pages for writes */
-    ssd->wp = g_malloc0(sizeof(struct write_pointer) * spp->nwps);
-    for (int i = 0; i < spp->nwps; i++) {
-        ssd_init_write_pointer(ssd, i);
-    }
+    ssd_init_multistream(ssd);
 
     qemu_thread_create(&ssd->ftl_thread, "FEMU-FTL-Thread", ftl_thread, n,
                        QEMU_THREAD_JOINABLE);
@@ -906,6 +918,7 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
             break;
     }
 
+
     if (spp->multistream_strategy == MULTISTREAM_MANUAL) {
         NvmeRwCmd *rw = (NvmeRwCmd*)&req->cmd;
         #define NVME_RW_DTYPE_STREAMS (1 << 4)
@@ -918,6 +931,8 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
         if (spp->multistream_strategy == MULTISTREAM_ENTROPY) {
             compress_ratio = calc_compress_ratio(mb, lpn);
             sid = get_stream_id(compress_ratio, lpn);
+        } else if (spp->multistream_strategy == MULTISTREAM_RANDOM) {
+            sid = rand() % spp->nwps;
         }
 
         /* user-defined statistics */

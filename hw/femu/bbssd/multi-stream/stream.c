@@ -4,8 +4,23 @@
 #include "entropy.h"
 #include "kmeans.h"
 
-extern unsigned char KmeansIsInitialized;
 extern uint64_t TotalNumberOfPages;
+KmeansCtx_t ctx;
+
+void multistream_mapper_init(u32 nclusters)
+{
+    KmeansNormalizer n = {8, TotalNumberOfPages};
+    KmeansInit(&ctx, nclusters, 6 /* batch_size */, n);
+}
+
+/*
+void multistream_mapper_destroy() {
+    // deallocate heap memory
+    free(ctx.means);
+    free(ctx.clusterCnt);
+    free(ctx.batch);
+}
+*/
 
 double calc_compress_ratio(void *mbe, uint64_t lpn)
 {
@@ -15,13 +30,6 @@ double calc_compress_ratio(void *mbe, uint64_t lpn)
 
 uint32_t get_stream_id(double compress_ratio, uint64_t lpn)
 {
-    if (KmeansIsInitialized == 0) {
-        KmeansNormalizer n = {8, TotalNumberOfPages};
-        KmeansInit(n);
-
-        KmeansIsInitialized = 1;
-    }
-
     KmeansFeautre feature = {compress_ratio, (double)lpn};
-    return GetClusters(feature);
+    return GetClusters(&ctx, feature);
 }

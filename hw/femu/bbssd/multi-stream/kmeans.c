@@ -1,7 +1,5 @@
 #include "kmeans.h"
-
-/* number of clusters*/
-#define MEANS (4)
+#include <stdlib.h>
 
 /* number of points to be clustered for each round*/
 #define BATCH_SIZE (6)
@@ -11,97 +9,76 @@
 #define LIST_EACH_FEATURE(feature)  \
      for (KmeansFeature_e feature = KMEANS_CPS_RATE;feature < KMEANS_FEATURE_CNT; feature++)
 
-static double gs_MeansInit[MEANS][KMEANS_FEATURE_CNT] = {
-    {0.2, 0},
-    {0.4, 0},
-    {0.6, 0},
-    {0.8, 0},
-};
-
 // store layout : weight 0, weight 1
 static u32 gs_WeightsInit[KMEANS_FEATURE_CNT] = {
     10, 1
 };
 
-typedef struct _KmeansBatch_t {
-    KmeansFeautre feature;
-    u32 cluster;
-}KmeansBatch_t;
-
-typedef struct _KmeansCtx_t {
-    KmeansFeautre means[MEANS];
-
-    // for update
-    KmeansNormalizer normalizer;
-    KmeansFeautre weights;
-    KmeansBatch_t batch[BATCH_SIZE];
-    u32 weights_sum;
-    u32 batchCnt;
-    u32 clusterCnt[MEANS];
-}KmeansCtx_t;
-
-static volatile KmeansCtx_t gs_KmeansCtx;
-unsigned char KmeansIsInitialized = 0;
-
-void KmeansInit(KmeansNormalizer n)
+void KmeansInit(KmeansCtx_t *ctx, u32 nclusters, u32 batch_size, KmeansNormalizer n)
 {
-    for (u32 i = 0; i < MEANS; i++) {
-        LIST_EACH_FEATURE(feature) {
-            gs_KmeansCtx.means[i][feature] = gs_MeansInit[i][feature];
-        }
+    ctx->nclusters = nclusters;
+    ctx->means = (KmeansFeautre *)calloc(nclusters, sizeof(KmeansFeautre));
+    ctx->clusterCnt = (u32 *)calloc(nclusters, sizeof(u32));
+
+    ctx->batch_size = batch_size;
+    ctx->batch = (KmeansBatch_t *)calloc(batch_size, sizeof(KmeansBatch_t));
+
+    for (u32 i = 0; i < ctx->nclusters; i++) {
+        ctx->means[i][KMEANS_CPS_RATE] = 1.0 / (ctx->nclusters + 1) * (i + 1);
+        ctx->means[i][KMEANS_LMA] = 0;
     }
 
     for (u32 i = 0; i < KMEANS_FEATURE_CNT; i++) {
-        gs_KmeansCtx.weights[i] = gs_WeightsInit[i];
+        ctx->weights[i] = gs_WeightsInit[i];
     }
 
     LIST_EACH_FEATURE(feature) {
-        gs_KmeansCtx.weights_sum += gs_KmeansCtx.weights[feature];
-        gs_KmeansCtx.normalizer[feature] = n[feature];
+        ctx->weights_sum += ctx->weights[feature];
+        ctx->normalizer[feature] = n[feature];
     }
-
 }
 
-static void UpdateMeans(void)
+static void UpdateMeans(KmeansCtx_t *ctx)
 {
     // update means
-    if (gs_KmeansCtx.batchCnt == BATCH_SIZE) {
-        for (u32 i = 0; i < BATCH_SIZE; i++) {
-            u32 mean_idx = gs_KmeansCtx.batch[i].cluster;
-            gs_KmeansCtx.clusterCnt[mean_idx] += 1;
-            double eta = 1. / gs_KmeansCtx.clusterCnt[mean_idx];
+    u32 batch_size = ctx->batch_size;
+    if (ctx->batchCnt == batch_size) {
+        for (u32 i = 0; i < batch_size; i++) {
+            u32 mean_idx = ctx->batch[i].cluster;
+            ctx->clusterCnt[mean_idx] += 1;
+            double eta = 1. / ctx->clusterCnt[mean_idx];
 
             LIST_EACH_FEATURE(feature) {
-                gs_KmeansCtx.means[mean_idx][feature] = \
-                    gs_KmeansCtx.means[mean_idx][feature] \
-                    + eta * gs_KmeansCtx.batch[i].feature[feature] \
-                    - eta * gs_KmeansCtx.means[mean_idx][feature];
+                ctx->means[mean_idx][feature] = \
+                    ctx->means[mean_idx][feature] \
+                    + eta * ctx->batch[i].feature[feature] \
+                    - eta * ctx->means[mean_idx][feature];
             }
         }
-        gs_KmeansCtx.batchCnt = 0;
+        ctx->batchCnt = 0;
     }
 }
 
-unsigned int GetClusters(KmeansFeautre kmeansFeature)
+unsigned int GetClusters(KmeansCtx_t *ctx, KmeansFeautre kmeansFeature)
 {
     double dist_min = U64_MAX;
     double diff = 0;
     u32 cluster = 0;
-    kmeansFeature[KMEANS_CPS_RATE] = kmeansFeature[KMEANS_CPS_RATE] / gs_KmeansCtx.normalizer[KMEANS_CPS_RATE];
-    kmeansFeature[KMEANS_LMA] = kmeansFeature[KMEANS_LMA] / gs_KmeansCtx.normalizer[KMEANS_LMA];
+    kmeansFeature[KMEANS_CPS_RATE] = kmeansFeature[KMEANS_CPS_RATE] / ctx->normalizer[KMEANS_CPS_RATE];
+    kmeansFeature[KMEANS_LMA] = kmeansFeature[KMEANS_LMA] / ctx->normalizer[KMEANS_LMA];
 
     // compute cluster
-    for (u32 i = 0; i < MEANS; i++) {
+    for (u32 i = 0; i < ctx->nclusters; i++) {
         double dist = 0;
 
         LIST_EACH_FEATURE(feature) {
             if (feature == KMEANS_LMA) {
-                diff = ABS_SUB(kmeansFeature[feature],gs_KmeansCtx.means[i][feature]);
+                diff = ABS_SUB(kmeansFeature[feature], ctx->means[i][feature]);
             }
             else {
-                diff = ABS_SUB(kmeansFeature[feature],gs_KmeansCtx.means[i][feature]);
+                diff = ABS_SUB(kmeansFeature[feature], ctx->means[i][feature]);
             }
-            dist += gs_KmeansCtx.weights[feature] * diff * diff / gs_KmeansCtx.weights_sum;
+            dist += ctx->weights[feature] * diff * diff / ctx->weights_sum;
             // PERFLOG_APPEND(i, feature, diff, dist, dist < dist_min, "calc dist");
         }
 
@@ -113,12 +90,12 @@ unsigned int GetClusters(KmeansFeautre kmeansFeature)
 
     // record point to batch
     LIST_EACH_FEATURE(feature) {
-        gs_KmeansCtx.batch[gs_KmeansCtx.batchCnt].feature[feature] = kmeansFeature[feature];
+        ctx->batch[ctx->batchCnt].feature[feature] = kmeansFeature[feature];
     }
-    gs_KmeansCtx.batch[gs_KmeansCtx.batchCnt].cluster = cluster;
-    gs_KmeansCtx.batchCnt++;
+    ctx->batch[ctx->batchCnt].cluster = cluster;
+    ctx->batchCnt++;
 
-    UpdateMeans();
+    UpdateMeans(ctx);
 
     return cluster;
 }
