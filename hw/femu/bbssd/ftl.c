@@ -296,6 +296,7 @@ static void ssd_init_params(struct ssdparams *spp, FemuCtrl *n)
 
     /* multi-stream related parameters */
     spp->nwps = n->bb_params.nstreams;
+    spp->ncentroids = n->bb_params.ncentroids;
     spp->stream_remap_thres = n->bb_params.stream_remap_thres;
     spp->multistream_strategy = n->bb_params.multistream_strategy;
 
@@ -402,7 +403,7 @@ static void ssd_init_multistream(struct ssd *ssd)
     }
 
     /* initialize K-means mapper */
-    multistream_mapper_init(spp->nwps);
+    multistream_mapper_init(spp->ncentroids);
 }
 
 void ssd_init(FemuCtrl *n)
@@ -767,7 +768,7 @@ static void clean_one_block(struct ssd *ssd, struct ppa *ppa, uint32_t sid)
 
             if (gc_collect_info(ssd, ppa) >= spp->stream_remap_thres) {
                 /* change stream ID when copywrite too much */
-                sid = 7;
+                sid = spp->nwps - 1;
             }
             /* delay the maptbl update until "write" happens */
             gc_write_page(ssd, ppa, sid);

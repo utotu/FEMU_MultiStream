@@ -164,6 +164,7 @@ struct ssdparams {
 
     int stream_remap_thres;
     int multistream_strategy;
+    int ncentroids;
 };
 
 typedef struct line {

@@ -1206,6 +1206,7 @@ typedef struct BbCtrlParams {
     int nstreams;
     int stream_remap_thres;
     int multistream_strategy;
+    int ncentroids;
 } BbCtrlParams;
 
 typedef struct ZNSCtrlParams {

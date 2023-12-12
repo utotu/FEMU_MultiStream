@@ -1,5 +1,6 @@
 #include "../nvme.h"
 #include "./ftl.h"
+#include "multi-stream/kmeans.h"
 
 static void bb_init_ctrl_str(FemuCtrl *n)
 {
@@ -70,6 +71,8 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
     }
 }
 
+extern KmeansCtx_t ctx;
+
 static void bb_stats(FemuCtrl *n, NvmeCmd *cmd)
 {
     struct ssd *ssd = n->ssd;
@@ -90,12 +93,13 @@ static void bb_stats(FemuCtrl *n, NvmeCmd *cmd)
     for (int i = 0; i < spp->nwps; i++) {
         uint64_t gc_cnt = ssd->stats.streams[i].gc_cnt;
 
-        sprintf(line, "streams[%d]: user_writes= %lu, gc_writes = %lu, gc_cnt = %lu, copyback_ratio = %f\n", \
+        sprintf(line, "streams[%d]: user_writes= %lu, gc_writes = %lu, gc_cnt = %lu, copyback_ratio = %f, means = %f\n", \
             i,
             ssd->stats.streams[i].user_writes,
             ssd->stats.streams[i].gc_writes,
             gc_cnt,
-            gc_cnt ? ssd->stats.streams[i].copyback_ratio_sum / gc_cnt : 0.0);
+            gc_cnt ? ssd->stats.streams[i].copyback_ratio_sum / gc_cnt : 0.0,
+            i < spp->ncentroids ? ctx.means[i][KMEANS_CPS_RATE] : 0.0);
         strcat(str, line);
     }
     femu_log("streams statistics:\n%s", str);

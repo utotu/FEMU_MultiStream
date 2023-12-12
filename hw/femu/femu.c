@@ -682,6 +682,7 @@ static Property femu_props[] = {
     DEFINE_PROP_INT32("gc_thres_pcent_high", FemuCtrl, bb_params.gc_thres_pcent_high, 95),
     DEFINE_PROP_INT32("multistream_strategy", FemuCtrl, bb_params.multistream_strategy, 0),
     DEFINE_PROP_INT32("nstreams", FemuCtrl, bb_params.nstreams, 8),
+    DEFINE_PROP_INT32("ncentroids", FemuCtrl, bb_params.ncentroids, 5),
     DEFINE_PROP_INT32("stream_remap_thres", FemuCtrl, bb_params.stream_remap_thres, 4),
     DEFINE_PROP_END_OF_LIST(),
 };
