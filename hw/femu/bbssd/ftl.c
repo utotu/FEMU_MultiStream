@@ -138,6 +138,14 @@ static void ssd_init_write_pointer(struct ssd *ssd, uint32_t sid)
     wpp->pl = 0;
 }
 
+/*
+static int get_cur_sid(struct ssd *ssd, struct ppa ppa) {
+    struct line_mgmt *lm = &ssd->lm;
+    struct line *curline = &lm->lines[ppa.g.blk];
+    return curline->sid;
+}
+*/
+
 static inline void check_addr(int a, int max)
 {
     ftl_assert(a >= 0 && a < max);
@@ -769,7 +777,16 @@ static void clean_one_block(struct ssd *ssd, struct ppa *ppa, uint32_t sid)
             if (gc_collect_info(ssd, ppa) >= spp->stream_remap_thres) {
                 /* change stream ID when copywrite too much */
                 sid = spp->nwps - 1;
+                /*
+                int cur_sid = get_cur_sid(ssd, *ppa);
+                if (cur_sid < spp->nwps - 2) {
+                    sid = spp->nwps - 2;
+                } else { // cur_sid == spp->nwps - 1 || cur_sid == spp->nwps - 2
+                    sid = spp->nwps - 1;
+                }
+                */
             }
+
             /* delay the maptbl update until "write" happens */
             gc_write_page(ssd, ppa, sid);
             cnt++;
@@ -935,6 +952,21 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
         } else if (spp->multistream_strategy == MULTISTREAM_RANDOM) {
             sid = rand() % spp->nwps;
         }
+
+        /*
+        ppa = get_maptbl_ent(ssd, lpn);
+        if (mapped_ppa(&ppa)) {
+            int cur_sid = get_cur_sid(ssd, ppa);
+            if (cur_sid == spp->nwps - 1) {
+                sid = spp->nwps - 2;
+                ssd->pg_copyback_tbl[lpn] = spp->stream_remap_thres;
+            } else {
+                ssd->pg_copyback_tbl[lpn] = 0;
+            }
+        } else {
+            ssd->pg_copyback_tbl[lpn] = 0;
+        }
+        */
 
         /* user-defined statistics */
         ssd->stats.total_user_writes++;
