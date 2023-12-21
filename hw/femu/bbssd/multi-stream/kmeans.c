@@ -11,7 +11,7 @@
 
 // store layout : weight 0, weight 1
 static u32 gs_WeightsInit[KMEANS_FEATURE_CNT] = {
-    10, 1
+    10, 0
 };
 
 void KmeansInit(KmeansCtx_t *ctx, u32 nclusters, u32 batch_size, KmeansNormalizer n)

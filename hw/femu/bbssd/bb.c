@@ -86,19 +86,20 @@ static void bb_stats(FemuCtrl *n, NvmeCmd *cmd)
         lm->tt_lines, lm->free_line_cnt, lm->full_line_cnt, lm->victim_line_cnt);
 
 
-    char line[128];
+    char line[256];
     char *str = g_malloc0(spp->nwps * sizeof(line));
     str[0] = '\0';
 
     for (int i = 0; i < spp->nwps; i++) {
         uint64_t gc_cnt = ssd->stats.streams[i].gc_cnt;
 
-        sprintf(line, "streams[%d]: user_writes= %lu, gc_writes = %lu, gc_cnt = %lu, copyback_ratio = %f, means = %f\n", \
+        sprintf(line, "streams[%d]: user_writes= %lu, gc_writes = %lu, gc_cnt = %lu, copyback_ratio = %f, lifetime = %e, means = %f\n", \
             i,
             ssd->stats.streams[i].user_writes,
             ssd->stats.streams[i].gc_writes,
             gc_cnt,
             gc_cnt ? ssd->stats.streams[i].copyback_ratio_sum / gc_cnt : 0.0,
+            (double)ssd->stats.streams[i].lifetime,
             i < spp->ncentroids ? ctx.means[i][KMEANS_CPS_RATE] : 0.0);
         strcat(str, line);
     }

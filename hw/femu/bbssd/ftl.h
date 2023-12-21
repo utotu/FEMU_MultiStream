@@ -211,6 +211,8 @@ struct stream_stats {
     uint64_t gc_writes;
     uint64_t gc_cnt;
     double copyback_ratio_sum;
+    uint64_t lifetime;
+    uint64_t lifetime_updates;
 };
 
 struct ssd_stats {
@@ -237,6 +239,7 @@ struct ssd {
 
     struct ssd_stats stats;
     uint32_t *pg_copyback_tbl;
+    uint64_t *pg_wtime_tbl;
 };
 
 void ssd_init(FemuCtrl *n);

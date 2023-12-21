@@ -138,13 +138,11 @@ static void ssd_init_write_pointer(struct ssd *ssd, uint32_t sid)
     wpp->pl = 0;
 }
 
-/*
 static int get_cur_sid(struct ssd *ssd, struct ppa ppa) {
     struct line_mgmt *lm = &ssd->lm;
     struct line *curline = &lm->lines[ppa.g.blk];
     return curline->sid;
 }
-*/
 
 static inline void check_addr(int a, int max)
 {
@@ -395,6 +393,9 @@ static void ssd_init_stats(struct ssd *ssd)
 
     ssd->pg_copyback_tbl = g_malloc0(sizeof(uint32_t) * spp->tt_pgs);
     memset(ssd->pg_copyback_tbl, 0, sizeof(uint32_t) * spp->tt_pgs);
+
+    ssd->pg_wtime_tbl = g_malloc0(sizeof(uint64_t) * spp->tt_pgs);
+    memset(ssd->pg_wtime_tbl, 0, sizeof(uint64_t) * spp->tt_pgs);
 }
 
 static void ssd_init_multistream(struct ssd *ssd)
@@ -973,6 +974,15 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
         ssd->stats.streams[sid].user_writes++;
 
         ssd->pg_copyback_tbl[lpn] = 0;
+        uint64_t wtime = ssd->pg_wtime_tbl[lpn];
+        if (wtime != 0) {
+            // update stream lifetime
+            ssd->stats.streams[sid].lifetime_updates++;
+            ssd->stats.streams[sid].lifetime += 1. / ssd->stats.streams[sid].lifetime_updates * (req->stime - wtime);
+        }
+        // update pg lifetime
+        ssd->pg_wtime_tbl[lpn] = req->stime;
+
         ppa = get_maptbl_ent(ssd, lpn);
         if (mapped_ppa(&ppa)) {
             /* update old page information first */
@@ -1015,7 +1025,7 @@ static uint64_t ssd_discard(struct ssd *ssd, NvmeRequest *req)
     uint64_t start_lpn;
     uint64_t end_lpn;
     uint64_t lpn;
-    struct ppa ppa;
+    struct ppa ppa, ppa1;
 
     for (i = 0; i < nr; i++) {
         lba = le64_to_cpu(range[i].slba);
@@ -1024,13 +1034,21 @@ static uint64_t ssd_discard(struct ssd *ssd, NvmeRequest *req)
         start_lpn = lba / spp->secs_per_pg;
         end_lpn = (lba + len - 1) / spp->secs_per_pg;
         for (lpn = start_lpn; lpn <= end_lpn; lpn++) {
-            ppa = get_maptbl_ent(ssd, lpn);
+            ppa1 = ppa = get_maptbl_ent(ssd, lpn);
             if (mapped_ppa(&ppa)) {
                 mark_page_invalid(ssd, &ppa);
                 set_rmap_ent(ssd, INVALID_LPN, &ppa);
                 ppa.ppa = UNMAPPED_PPA;
                 set_maptbl_ent(ssd, lpn, &ppa);
             }
+
+            uint64_t wtime = ssd->pg_wtime_tbl[lpn];
+            if (wtime != 0) {
+                int sid = get_cur_sid(ssd, ppa1);
+                ssd->stats.streams[sid].lifetime_updates++;
+                ssd->stats.streams[sid].lifetime += 1. / ssd->stats.streams[sid].lifetime_updates * (req->stime - wtime);
+            }
+            ssd->pg_wtime_tbl[lpn] = 0;
         }
     }
 
