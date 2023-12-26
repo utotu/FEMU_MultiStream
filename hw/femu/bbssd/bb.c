@@ -71,36 +71,44 @@ static void bb_flip(FemuCtrl *n, NvmeCmd *cmd)
     }
 }
 
-extern KmeansCtx_t ctx;
+extern KmeansCtx_t ctx1; /* soft K-means model */
+extern KmeansCtx_t ctx2; /* hard K-means model */
 
 static void bb_stats(FemuCtrl *n, NvmeCmd *cmd)
 {
     struct ssd *ssd = n->ssd;
     struct ssdparams *spp = &ssd->sp;
 
-    femu_log("total_ssd_writes = %lu, total_user_writes = %lu, total_gc_writes = %lu\n",
-        ssd->stats.total_ssd_writes, ssd->stats.total_user_writes, ssd->stats.total_gc_writes);
+    femu_log("tt_ssd_writes = %lu, tt_user_writes = %lu, tt_gc_writes = %lu, WAF = %f\n",
+        ssd->stats.total_ssd_writes, ssd->stats.total_user_writes, ssd->stats.total_gc_writes, 1. * ssd->stats.total_ssd_writes / ssd->stats.total_user_writes);
 
     struct line_mgmt *lm = &ssd->lm;
     femu_log("tt_lines = %d, free_line_cnt = %d, full_line_cnt = %d, victim_line_cnt = %d\n",
         lm->tt_lines, lm->free_line_cnt, lm->full_line_cnt, lm->victim_line_cnt);
 
-
     char line[256];
-    char *str = g_malloc0(spp->nwps * sizeof(line));
+    char *str = g_malloc0((spp->ncentroids + spp->nwps) * sizeof(line));
     str[0] = '\0';
 
     for (int i = 0; i < spp->nwps; i++) {
         uint64_t gc_cnt = ssd->stats.streams[i].gc_cnt;
 
-        sprintf(line, "streams[%d]: user_writes= %lu, gc_writes = %lu, gc_cnt = %lu, copyback_ratio = %f, lifetime = %e, means = %f\n", \
+        sprintf(line, "streams[%d]: user_writes= %lu, gc_writes = %lu, gc_cnt = %lu, copyback_ratio = %f, means = %f\n", \
             i,
             ssd->stats.streams[i].user_writes,
             ssd->stats.streams[i].gc_writes,
             gc_cnt,
             gc_cnt ? ssd->stats.streams[i].copyback_ratio_sum / gc_cnt : 0.0,
-            (double)ssd->stats.streams[i].lifetime,
-            i < spp->ncentroids ? ctx.means[i][KMEANS_CPS_RATE] : 0.0);
+            ctx2.means[i][KMEANS_CPS_RATE]);
+        strcat(str, line);
+    }
+
+    for (int i = 0; i < spp->ncentroids; i++) {
+        sprintf(line, "soft_streams[%d]: lifetime = %e, updates = %lu, means = %f\n", \
+            i,
+            (double)ssd->stats.soft_streams[i].lifetime,
+            ssd->stats.soft_streams[i].updates,
+            ctx1.means[i][KMEANS_CPS_RATE]);
         strcat(str, line);
     }
     femu_log("streams statistics:\n%s", str);

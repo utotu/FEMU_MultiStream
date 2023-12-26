@@ -1204,9 +1204,10 @@ typedef struct BbCtrlParams {
     int gc_thres_pcent_high;
 
     int nstreams;
-    int stream_remap_thres;
-    int multistream_strategy;
     int ncentroids;
+    int multistream_strategy;
+    int stream_remap_thres;
+    int stream_mapper_version;
 } BbCtrlParams;
 
 typedef struct ZNSCtrlParams {

@@ -163,6 +163,7 @@ struct ssdparams {
     int tt_luns;      /* total # of LUNs in the SSD */
 
     int stream_remap_thres;
+    int stream_mapper_version;
     int multistream_strategy;
     int ncentroids;
 };
@@ -211,8 +212,11 @@ struct stream_stats {
     uint64_t gc_writes;
     uint64_t gc_cnt;
     double copyback_ratio_sum;
+};
+
+struct soft_stream_stats {
     uint64_t lifetime;
-    uint64_t lifetime_updates;
+    uint64_t updates;
 };
 
 struct ssd_stats {
@@ -220,6 +224,8 @@ struct ssd_stats {
     uint64_t total_ssd_writes;  /* total # of pages written by SSD internal */
     uint64_t total_gc_writes;   /* total # of pags write by GC */
     struct stream_stats *streams;
+    struct soft_stream_stats *soft_streams;
+    uint32_t valid_lifetime_cnt;
 };
 
 struct ssd {
@@ -240,6 +246,7 @@ struct ssd {
     struct ssd_stats stats;
     uint32_t *pg_copyback_tbl;
     uint64_t *pg_wtime_tbl;
+    uint8_t  *pg_ssid_tbl;
 };
 
 void ssd_init(FemuCtrl *n);
