@@ -163,6 +163,7 @@ struct ssdparams {
     int tt_luns;      /* total # of LUNs in the SSD */
 
     int stream_remap_thres;
+    int stream_remap_enable;
     int stream_mapper_version;
     int multistream_strategy;
     int ncentroids;

@@ -138,13 +138,11 @@ static void ssd_init_write_pointer(struct ssd *ssd, uint32_t sid)
     wpp->pl = 0;
 }
 
-/*
 static int get_cur_sid(struct ssd *ssd, struct ppa ppa) {
     struct line_mgmt *lm = &ssd->lm;
     struct line *curline = &lm->lines[ppa.g.blk];
     return curline->sid;
 }
-*/
 
 static inline void check_addr(int a, int max)
 {
@@ -786,17 +784,15 @@ static void clean_one_block(struct ssd *ssd, struct ppa *ppa, uint32_t sid)
         if (pg_iter->status == PG_VALID) {
             gc_read_page(ssd, ppa);
 
-            if (gc_collect_info(ssd, ppa) >= spp->stream_remap_thres) {
-                /* change stream ID when copywrite too much */
-                sid = spp->nwps - 1;
-                /*
+            if (spp->stream_remap_enable && gc_collect_info(ssd, ppa) >= spp->stream_remap_thres) {
+                // change stream ID when copywrite too much
+                // sid = spp->nwps - 1;
                 int cur_sid = get_cur_sid(ssd, *ppa);
                 if (cur_sid < spp->nwps - 2) {
                     sid = spp->nwps - 2;
                 } else { // cur_sid == spp->nwps - 1 || cur_sid == spp->nwps - 2
                     sid = spp->nwps - 1;
                 }
-                */
             }
 
             /* delay the maptbl update until "write" happens */
@@ -1005,25 +1001,22 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
             sid = rand() % spp->nwps;
         }
 
-        /*
-        ppa = get_maptbl_ent(ssd, lpn);
-        if (mapped_ppa(&ppa)) {
-            int cur_sid = get_cur_sid(ssd, ppa);
-            if (cur_sid == spp->nwps - 1) {
-                sid = spp->nwps - 2;
-                ssd->pg_copyback_tbl[lpn] = spp->stream_remap_thres;
-            } else {
-                ssd->pg_copyback_tbl[lpn] = 0;
+        ssd->pg_copyback_tbl[lpn] = 0;
+        if (spp->stream_remap_enable) {
+            ppa = get_maptbl_ent(ssd, lpn);
+            if (mapped_ppa(&ppa)) {
+                int cur_sid = get_cur_sid(ssd, ppa);
+                if (cur_sid == spp->nwps - 1) {
+                    sid = spp->nwps - 2;
+                    ssd->pg_copyback_tbl[lpn] = spp->stream_remap_thres;
+                }
             }
-        } else {
-            ssd->pg_copyback_tbl[lpn] = 0;
         }
-        */
 
         /* user-defined statistics */
         ssd->stats.total_user_writes++;
         ssd->stats.streams[sid].user_writes++;
-        ssd->pg_copyback_tbl[lpn] = 0;
+        //ssd->pg_copyback_tbl[lpn] = 0;
 
         ppa = get_maptbl_ent(ssd, lpn);
         if (mapped_ppa(&ppa)) {

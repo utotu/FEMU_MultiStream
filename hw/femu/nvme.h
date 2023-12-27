@@ -1207,6 +1207,7 @@ typedef struct BbCtrlParams {
     int ncentroids;
     int multistream_strategy;
     int stream_remap_thres;
+    int stream_remap_enable;
     int stream_mapper_version;
 } BbCtrlParams;
 
