@@ -24,8 +24,8 @@ void KmeansInit(KmeansCtx_t *ctx, u32 nclusters, u32 batch_size, KmeansNormalize
     ctx->batch = (KmeansBatch_t *)calloc(batch_size, sizeof(KmeansBatch_t));
 
     for (u32 i = 0; i < ctx->nclusters; i++) {
-        //ctx->means[i][KMEANS_CPS_RATE] = 1.0 / (ctx->nclusters + 1) * (i + 1);
-        ctx->means[i][KMEANS_CPS_RATE] = 1.0 / (ctx->nclusters) * i;
+        ctx->means[i][KMEANS_CPS_RATE] = 1.0 / (ctx->nclusters + 1) * (i + 1);
+        //ctx->means[i][KMEANS_CPS_RATE] = 1.0 / (ctx->nclusters) * i;
         ctx->means[i][KMEANS_LMA] = 0;
     }
 

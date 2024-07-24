@@ -304,6 +304,7 @@ static void ssd_init_params(struct ssdparams *spp, FemuCtrl *n)
     spp->nwps = n->bb_params.nstreams;
     spp->ncentroids = n->bb_params.ncentroids;
     spp->stream_remap_thres = n->bb_params.stream_remap_thres;
+    spp->stream_remap_enable = n->bb_params.stream_remap_enable;
     spp->stream_mapper_version = n->bb_params.stream_mapper_version;
     spp->multistream_strategy = n->bb_params.multistream_strategy;
 
@@ -1087,6 +1088,7 @@ static uint64_t ssd_discard(struct ssd *ssd, NvmeRequest *req)
                 ssd->stats.soft_streams[sid].lifetime += 1. / ssd->stats.soft_streams[sid].updates * (req->stime - wtime);
             }
             ssd->pg_wtime_tbl[lpn] = 0;
+            ssd->pg_copyback_tbl[lpn] = 0;
         }
     }
 
