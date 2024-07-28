@@ -542,6 +542,10 @@ static void femu_realize(PCIDevice *pci_dev, Error **errp)
     }
 
     bs_size = ((int64_t)n->memsz) * 1024 * 1024;
+    if (n->bb_params.compression_enable) {
+        /* allocate extra memory for compressed SSD */
+        bs_size *= n->bb_params.compression_ratio;
+    }
 
     init_dram_backend(&n->mbe, bs_size);
     n->mbe->femu_mode = n->femu_mode;
@@ -686,6 +690,8 @@ static Property femu_props[] = {
     DEFINE_PROP_INT32("stream_remap_thres", FemuCtrl, bb_params.stream_remap_thres, 4),
     DEFINE_PROP_INT32("stream_remap_enable", FemuCtrl, bb_params.stream_remap_enable, 1),
     DEFINE_PROP_INT32("stream_mapper_version", FemuCtrl, bb_params.stream_mapper_version, 0),
+    DEFINE_PROP_INT32("compression_enable", FemuCtrl, bb_params.compression_enable, 0),
+    DEFINE_PROP_INT32("compression_ratio", FemuCtrl, bb_params.compression_ratio, 2),
     DEFINE_PROP_END_OF_LIST(),
 };
 

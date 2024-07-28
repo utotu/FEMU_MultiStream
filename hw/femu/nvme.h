@@ -1209,6 +1209,8 @@ typedef struct BbCtrlParams {
     int stream_remap_thres;
     int stream_remap_enable;
     int stream_mapper_version;
+    int compression_enable;
+    int compression_ratio;
 } BbCtrlParams;
 
 typedef struct ZNSCtrlParams {

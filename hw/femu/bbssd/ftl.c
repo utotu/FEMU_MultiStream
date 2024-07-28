@@ -2,10 +2,13 @@
 #include "multi-stream/stream.h"
 
 //#define FEMU_DEBUG_FTL
+#include <zlib.h>
+static uLongf compress_page(NvmeRequest *req, uint64_t lpn);
 
 uint64_t TotalNumberOfPages;
 static void *ftl_thread(void *arg);
 static int do_gc(struct ssd *ssd, bool force);
+
 
 static inline bool should_gc(struct ssd *ssd)
 {
@@ -66,12 +69,15 @@ static inline int victim_line_cmp_pri(pqueue_pri_t next, pqueue_pri_t curr)
 
 static inline pqueue_pri_t victim_line_get_pri(void *a)
 {
-    return ((struct line *)a)->vpc;
+    struct line *line = (struct line*)a;
+    return line->compressed ? line->valid_size : line->vpc;
 }
 
 static inline void victim_line_set_pri(void *a, pqueue_pri_t pri)
 {
-    ((struct line *)a)->vpc = pri;
+    struct line *line = (struct line *)a;
+    if (line->compressed) line->valid_size = pri;
+    else line->vpc = pri;
 }
 
 static inline size_t victim_line_get_pos(void *a)
@@ -107,6 +113,10 @@ static void ssd_init_lines(struct ssd *ssd)
         line->ipc = 0;
         line->vpc = 0;
         line->pos = 0;
+        line->compressed = spp->compression_enable;
+        line->written_size = 0;
+        line->invalid_size = 0;
+        line->valid_size = 0;
         /* initialize all the lines as free lines */
         QTAILQ_INSERT_TAIL(&lm->free_line_list, line, entry);
         lm->free_line_cnt++;
@@ -221,8 +231,74 @@ static void ssd_advance_write_pointer(struct ssd *ssd, uint32_t sid)
             }
         }
     }
+    ssd->stats.total_ssd_writes++;
+}
+
+static void ssd_advance_write_pointer_with_comp(struct ssd *ssd, uint32_t sid, long long size)
+{
+    struct ssdparams *spp = &ssd->sp;
+    struct write_pointer *wpp = &ssd->wp[sid];
+    struct line_mgmt *lm = &ssd->lm;
+    struct line *curline = wpp->curline;
+
+    //ftl_log("curline->written_size = %u, wpp->pg = %u\n", curline->written_size, wpp->pg);
+
+    check_addr(wpp->ch, spp->nchs);
+    wpp->ch++;
+    if (wpp->ch == spp->nchs) {
+        wpp->ch = 0;
+        check_addr(wpp->lun, spp->luns_per_ch);
+        wpp->lun++;
+        /* in this case, we should go to next lun */
+        if (wpp->lun == spp->luns_per_ch) {
+            wpp->lun = 0;
+            /* go to next page in the block */
+            check_addr(wpp->pg, spp->pgs_per_blk);
+            wpp->pg++;
+            if (curline->compressed && wpp->pg == spp->pgs_per_blk) {
+                ftl_err("Exceed compressed line size\n");
+                abort();
+            }
+        }
+    }
+
+    curline->written_size += size;
+    uint32_t line_size = spp->pgs_per_blk / spp->compression_ratio * 4096; // 64MB
+    ftl_assert(line_size ==  64 * 1024 * 1024);
+    if (curline->written_size >= line_size) {
+        wpp->ch = 0;
+        wpp->lun = 0;
+        wpp->pg = 0;
+        if (wpp->curline->vpc == spp->pgs_per_line) {
+            ftl_assert(wpp->curline->ipc == 0);
+            QTAILQ_INSERT_TAIL(&lm->full_line_list, wpp->curline, entry);
+            lm->full_line_cnt++;
+        } else {
+            ftl_assert(wpp->curline->vpc >= 0 && wpp->curline->vpc < spp->pgs_per_line);
+            ftl_assert(wpp->curline->ipc > 0);
+            pqueue_insert(lm->victim_line_pq, wpp->curline);
+            lm->victim_line_cnt++;
+        }
+
+        check_addr(wpp->blk, spp->blks_per_pl);
+        wpp->curline = NULL;
+        wpp->curline = get_next_free_line(ssd);
+        if (!wpp->curline) {
+            printf("abort\n");
+            abort();
+        }
+        wpp->curline->sid = sid;
+        wpp->blk = wpp->curline->id;
+        check_addr(wpp->blk, spp->blks_per_pl);
+
+        ftl_assert(wpp->pg == 0);
+        ftl_assert(wpp->lun == 0);
+        ftl_assert(wpp->ch == 0);
+        ftl_assert(wpp->pl == 0);
+    }
 
     ssd->stats.total_ssd_writes++;
+    ssd->stats.total_ssd_written_size += size; // compression data size
 }
 
 static struct ppa get_new_page(struct ssd *ssd, uint32_t sid)
@@ -255,7 +331,11 @@ static void ssd_init_params(struct ssdparams *spp, FemuCtrl *n)
 {
     spp->secsz = n->bb_params.secsz; // 512
     spp->secs_per_pg = n->bb_params.secs_per_pg; // 8
-    spp->pgs_per_blk = n->bb_params.pgs_per_blk;  // 256
+    if (n->bb_params.compression_enable) {
+        spp->pgs_per_blk = n->bb_params.pgs_per_blk * n->bb_params.compression_ratio;  // 256
+    } else {
+        spp->pgs_per_blk = n->bb_params.pgs_per_blk;  // 256
+    }
     spp->blks_per_pl = n->bb_params.blks_per_pl;  /* 256 16GB */
     spp->pls_per_lun = n->bb_params.pls_per_lun;  // 1
     spp->luns_per_ch = n->bb_params.luns_per_ch;  // 8
@@ -307,6 +387,8 @@ static void ssd_init_params(struct ssdparams *spp, FemuCtrl *n)
     spp->stream_remap_enable = n->bb_params.stream_remap_enable;
     spp->stream_mapper_version = n->bb_params.stream_mapper_version;
     spp->multistream_strategy = n->bb_params.multistream_strategy;
+    spp->compression_enable = n->bb_params.compression_enable;
+    spp->compression_ratio = n->bb_params.compression_ratio;
 
     check_params(spp);
 }
@@ -319,6 +401,7 @@ static void ssd_init_nand_page(struct nand_page *pg, struct ssdparams *spp)
         pg->sec[i] = SEC_FREE;
     }
     pg->status = PG_FREE;
+    pg->comp_size = 0;
 }
 
 static void ssd_init_nand_blk(struct nand_block *blk, struct ssdparams *spp)
@@ -622,12 +705,22 @@ static void mark_page_invalid(struct ssd *ssd, struct ppa *ppa)
     }
     line->ipc++;
     ftl_assert(line->vpc > 0 && line->vpc <= spp->pgs_per_line);
-    /* Adjust the position of the victime line in the pq under over-writes */
-    if (line->pos) {
-        /* Note that line->vpc will be updated by this call */
-        pqueue_change_priority(lm->victim_line_pq, line->vpc - 1, line);
+
+    if (spp->compression_enable) {
+        line->invalid_size += pg->comp_size;
+        if (line->pos) {
+            pqueue_change_priority(lm->victim_line_pq, line->valid_size - pg->comp_size, line);
+        } else {
+            line->valid_size -= pg->comp_size;
+        }
     } else {
-        line->vpc--;
+        /* Adjust the position of the victime line in the pq under over-writes */
+        if (line->pos) {
+            /* Note that line->vpc will be updated by this call */
+            pqueue_change_priority(lm->victim_line_pq, line->vpc - 1, line);
+        } else {
+            line->vpc--;
+        }
     }
 
     if (was_full_line) {
@@ -660,6 +753,8 @@ static void mark_page_valid(struct ssd *ssd, struct ppa *ppa)
     line = get_line(ssd, ppa);
     ftl_assert(line->vpc >= 0 && line->vpc < ssd->sp.pgs_per_line);
     line->vpc++;
+    ftl_assert(pg->comp_size != 0);
+    line->valid_size += pg->comp_size;
 }
 
 static void mark_block_free(struct ssd *ssd, struct ppa *ppa)
@@ -673,6 +768,7 @@ static void mark_block_free(struct ssd *ssd, struct ppa *ppa)
         pg = &blk->pg[i];
         ftl_assert(pg->nsecs == spp->secs_per_pg);
         pg->status = PG_FREE;
+        pg->comp_size = 0;
     }
 
     /* reset block status */
@@ -720,7 +816,12 @@ static uint64_t gc_write_page(struct ssd *ssd, struct ppa *old_ppa, uint32_t sid
     mark_page_valid(ssd, &new_ppa);
 
     /* need to advance the write pointer here */
-    ssd_advance_write_pointer(ssd, sid);
+    if (ssd->sp.compression_enable) {
+        struct nand_page *old_page = get_pg(ssd, old_ppa);
+        ssd_advance_write_pointer_with_comp(ssd, sid, old_page->comp_size);
+    } else {
+        ssd_advance_write_pointer(ssd, sid);
+    }
 
     /* GC-related statistics */
     struct ssd_stats *stats = &ssd->stats;
@@ -749,6 +850,7 @@ static uint64_t gc_write_page(struct ssd *ssd, struct ppa *old_ppa, uint32_t sid
 
 static struct line *select_victim_line(struct ssd *ssd, bool force)
 {
+    struct ssdparams *spp = &ssd->sp;
     struct line_mgmt *lm = &ssd->lm;
     struct line *victim_line = NULL;
 
@@ -757,8 +859,15 @@ static struct line *select_victim_line(struct ssd *ssd, bool force)
         return NULL;
     }
 
-    if (!force && victim_line->ipc < ssd->sp.pgs_per_line / 8) {
-        return NULL;
+    if (victim_line->compressed) {
+        uint32_t line_size = spp->pgs_per_blk / spp->compression_ratio * 4096; // 64MB
+        if (!force && victim_line->invalid_size < line_size / 8) {
+            return NULL;
+        }
+    } else {
+        if (!force && victim_line->ipc < ssd->sp.pgs_per_line / 8) {
+            return NULL;
+        }
     }
 
     pqueue_pop(lm->victim_line_pq);
@@ -782,6 +891,8 @@ static void clean_one_block(struct ssd *ssd, struct ppa *ppa, uint32_t sid)
         pg_iter = get_pg(ssd, ppa);
         /* there shouldn't be any free page in victim blocks */
         ftl_assert(pg_iter->status != PG_FREE);
+        if (spp->compression_enable && pg_iter->comp_size == 0) break;
+
         if (pg_iter->status == PG_VALID) {
             gc_read_page(ssd, ppa);
 
@@ -811,6 +922,9 @@ static void mark_line_free(struct ssd *ssd, struct ppa *ppa)
     struct line *line = get_line(ssd, ppa);
     line->ipc = 0;
     line->vpc = 0;
+    line->written_size = 0;
+    line->invalid_size = 0;
+    line->valid_size = 0;
     /* move this line to free line list */
     QTAILQ_INSERT_TAIL(&lm->free_line_list, line, entry);
     lm->free_line_cnt++;
@@ -995,6 +1109,13 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
     }
 
     for (lpn = start_lpn; lpn <= end_lpn; lpn++) {
+        /* compress page */
+
+        uLongf comp_size = 0;
+        if (spp->compression_enable) {
+            comp_size = compress_page(req, lpn);
+        }
+
         /* assign stream ID */
         if (spp->multistream_strategy == MULTISTREAM_ENTROPY) {
             sid = get_stream_id(ssd, req, lpn);
@@ -1016,6 +1137,7 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
 
         /* user-defined statistics */
         ssd->stats.total_user_writes++;
+        ssd->stats.total_user_written_size += 4096;
         ssd->stats.streams[sid].user_writes++;
         //ssd->pg_copyback_tbl[lpn] = 0;
 
@@ -1036,7 +1158,13 @@ static uint64_t ssd_write(struct ssd *ssd, NvmeRequest *req)
         mark_page_valid(ssd, &ppa);
 
         /* need to advance the write pointer here */
-        ssd_advance_write_pointer(ssd, sid);
+        if (spp->compression_enable) {
+            struct nand_page *pg = get_pg(ssd, &ppa);
+            pg->comp_size = comp_size;
+            ssd_advance_write_pointer_with_comp(ssd, sid, comp_size);
+        } else {
+            ssd_advance_write_pointer(ssd, sid);
+        }
 
         struct nand_cmd swr;
         swr.type = USER_IO;
@@ -1161,3 +1289,28 @@ static void *ftl_thread(void *arg)
     return NULL;
 }
 
+
+// page compression buffer
+Bytef compressed[8192];
+uLongf compressed_size;
+static uLongf compress_page(NvmeRequest *req, uint64_t lpn)
+{
+    FemuCtrl *n = req->sq->ctrl;
+
+    // source
+    char *page = (char *)(n->mbe->logical_space) + (lpn << 12);
+    size_t page_size = 4096;
+
+    // destination
+    compressed_size = 8192;
+
+    // zlib compression
+    int ret = compress(compressed, &compressed_size, (const Bytef *)page, page_size);
+    if (ret != Z_OK) {
+        ftl_err("Compression failed, ret code = %d\n", ret);
+    }
+
+    //ftl_log("compressed_size = %lu\n", compressed_size);
+    if (compressed_size <= 26|| compressed_size > page_size) return page_size;
+    return compressed_size;
+};

@@ -79,8 +79,16 @@ static void bb_stats(FemuCtrl *n, NvmeCmd *cmd)
     struct ssd *ssd = n->ssd;
     struct ssdparams *spp = &ssd->sp;
 
-    femu_log("tt_ssd_writes = %lu, tt_user_writes = %lu, tt_gc_writes = %lu, WAF = %f\n",
-        ssd->stats.total_ssd_writes, ssd->stats.total_user_writes, ssd->stats.total_gc_writes, 1. * ssd->stats.total_ssd_writes / ssd->stats.total_user_writes);
+    femu_log("tt_ssd_writes = %lu, \
+              tt_user_writes = %lu,\
+              tt_gc_writes = %lu, \
+              WAF = %f\n, \
+              WAF(comp) = %f\n",
+        ssd->stats.total_ssd_writes,
+        ssd->stats.total_user_writes,
+        ssd->stats.total_gc_writes, 
+        1. * ssd->stats.total_ssd_writes / ssd->stats.total_user_writes,
+        1. * ssd->stats.total_ssd_written_size / ssd->stats.total_user_written_size);
 
     struct line_mgmt *lm = &ssd->lm;
     femu_log("tt_lines = %d, free_line_cnt = %d, full_line_cnt = %d, victim_line_cnt = %d\n",

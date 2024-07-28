@@ -81,6 +81,7 @@ struct nand_page {
     nand_sec_status_t *sec;
     int nsecs;
     int status;
+    uint32_t comp_size;
 };
 
 struct nand_block {
@@ -167,6 +168,8 @@ struct ssdparams {
     int stream_mapper_version;
     int multistream_strategy;
     int ncentroids;
+    int compression_enable;
+    int compression_ratio;
 };
 
 typedef struct line {
@@ -177,6 +180,11 @@ typedef struct line {
     QTAILQ_ENTRY(line) entry; /* in either {free,victim,full} list */
     /* position in the priority queue for victim lines */
     size_t                  pos;
+
+    bool compressed;
+    uint32_t written_size; /* written data size after applying compression */
+    uint32_t invalid_size; /* invalid compressed data size */
+    uint32_t valid_size; /* as the pri for pqueue */
 } line;
 
 /* wp: record next write addr */
@@ -227,6 +235,9 @@ struct ssd_stats {
     struct stream_stats *streams;
     struct soft_stream_stats *soft_streams;
     uint32_t valid_lifetime_cnt;
+
+    uint64_t total_ssd_written_size;
+    uint64_t total_user_written_size;
 };
 
 struct ssd {
