@@ -332,6 +332,7 @@ enum NvmeAdminCommands {
     NVME_ADM_CMD_FEMU_DEBUG     = 0xee,
     NVME_ADM_CMD_FEMU_FLIP      = 0xef,
     NVME_ADM_CMD_FEMU_STATS     = 0xf0,
+    NVME_ADM_CMD_FEMU_DUMP     = 0xf1,
 };
 
 enum NvmeIoCommands {
@@ -1426,6 +1427,7 @@ enum {
     FEMU_BBSSD_MODE = 1,
     FEMU_NOSSD_MODE = 2,
     FEMU_ZNSSD_MODE = 3,
+    FEMU_MIDAS_MODE = 4,
     FEMU_SMARTSSD_MODE,
     FEMU_KVSSD_MODE,
 };
@@ -1449,6 +1451,12 @@ static inline bool BBSSD(FemuCtrl *n)
 {
     return (n->femu_mode == FEMU_BBSSD_MODE);
 }
+
+static inline bool MIDAS(FemuCtrl *n)
+{
+    return (n->femu_mode == FEMU_MIDAS_MODE);
+}
+
 
 static inline bool NOSSD(FemuCtrl *n)
 {
@@ -1518,6 +1526,7 @@ int nvme_register_ocssd12(FemuCtrl *n);
 int nvme_register_ocssd20(FemuCtrl *n);
 int nvme_register_nossd(FemuCtrl *n);
 int nvme_register_bbssd(FemuCtrl *n);
+int nvme_register_midas(FemuCtrl *n);
 int nvme_register_znssd(FemuCtrl *n);
 
 static inline uint64_t ns_blks(NvmeNamespace *ns, uint8_t lba_idx)

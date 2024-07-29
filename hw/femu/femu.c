@@ -521,6 +521,8 @@ static int nvme_register_extensions(FemuCtrl *n)
         nvme_register_nossd(n);
     } else if (BBSSD(n)) {
         nvme_register_bbssd(n);
+    } else if (MIDAS(n)) {
+        nvme_register_midas(n);
     } else if (ZNSSD(n)) {
         nvme_register_znssd(n);
     } else {
